@@ -28,6 +28,12 @@
   "dependencies": {
     "commonmark": "^0.26.0",
     "lodash": "^4.16.4",
-    "quill-delta": "^3.4.0"
+    "quill-delta": "^3.4.0",
+    "remark": "^8.0.0",
+    "remark-parse": "^4.0.0",
+    "remark-stringify": "^4.0.0",
+    "remark-toc": "^4.0.1",
+    "unified": "^6.1.6",
+    "unist-builder": "^1.0.2"
   }
 }

@@ -1,148 +1,138 @@
+const Delta = require('quill-delta')
+const remark = require('remark')
+const u = require('unist-builder')
 const _ = require('lodash')
-const defaultConverters = require('./fromDelta.converters')
-const Node = require('./utils/Node')
 
-exports = module.exports = function(ops, converters = defaultConverters) {
-  return _.trimEnd(convert(ops, converters).render()) + '\n'
+const defaultConvertInline = ({ insert, attributes = {} }) => {
+  const {
+      bold,
+    italic,
+    entity = { type: '', data: {} },
+    } = attributes
+
+  let inline = u('text', insert)
+  if (bold) {
+    inline = u('strong', [inline])
+  }
+  if (italic) {
+    inline = u('emphasis', [inline])
+  }
+  if (entity.type.toLowerCase() === 'link') {
+    inline = u('link', { url: entity.data.url, title: null }, [inline])
+  }
+  return inline
 }
 
-function convert(ops, converters) {
-  var group, line, el, activeInline, beginningOfLine
-  var root = new Node()
-
-  function newLine() {
-    el = line = new Node(['', '\n'])
-    root.append(line)
-    activeInline = {}
-  }
-  newLine()
-
-  for (var i = 0; i < ops.length; i++) {
-    var op = ops[i]
-
-    if (_.isObject(op.insert)) {
-      for (var k in op.insert) {
-        if (converters.embed[k]) {
-          applyStyles(op.attributes)
-          converters.embed[k].call(el, op.insert[k], op.attributes)
-        }
+const defaultConvertLine = ({ type, data, depth }) => {
+  switch (type) {
+    case 'unstyled': {
+      return {
+        type: 'paragraph'
       }
-    } else {
-      var lines = op.insert.split('\n')
-
-      if (isLinifyable(op.attributes, converters)) {
-        // Some line-level styling (ie headings) is applied by inserting a \n
-        // with the style; the style applies back to the previous \n.
-        // There *should* only be one style in an insert operation.
-
-        for (var j = 1; j < lines.length; j++) {
-          for (var attr in op.attributes) {
-            if (attr === 'type' && converters.block[op.attributes.type]) {
-              var fn = converters.block[op.attributes.type]
-              if (typeof fn == 'object') {
-                if (group && group.type != attr) {
-                  group = null
-                }
-                if (!group && fn.group) {
-                  group = {
-                    el: fn.group(),
-                    type: attr,
-                    value: op.attributes[k],
-                    distance: 0,
-                  }
-                  root.append(group.el)
-                }
-
-                if (group) {
-                  group.el.append(line)
-                  group.distance = 0
-                }
-                fn = fn.line
-              }
-
-              fn.call(line, op.attributes, group)
-              newLine()
-              break
-            }
-          }
-        }
-        beginningOfLine = true
-      } else {
-        for (var l = 0; l < lines.length; l++) {
-          if ((l > 0 || beginningOfLine) && group && ++group.distance >= 2) {
-            group = null
-          }
-          applyStyles(op.attributes, ops[i + 1] && ops[i + 1].attributes)
-          el.append(lines[l])
-          if (l < lines.length - 1) {
-            newLine()
-          }
-        }
-        beginningOfLine = false
+    }
+    case 'header-one': {
+      return {
+        type: 'heading',
+        depth: 1,
+      }
+    }
+    case 'header-two': {
+      return {
+        type: 'heading',
+        depth: 2,
+      }
+    }
+    case 'unordered-list-item': {
+      return {
+        type: 'listItem',
+        checked: null,
+        depth: depth || 0,
+        ordered: false,
+      }
+    }
+    case 'ordered-list-item': {
+      return {
+        type: 'listItem',
+        checked: null,
+        depth: depth || 0,
+        ordered: true,
+      }
+    }
+    case 'todo-block': {
+      return {
+        type: 'listItem',
+        checked: data.checked,
+        depth: depth || 0,
+        ordered: false,
       }
     }
   }
+  return {
+    type: 'paragraph'
+  }
+}
 
-  return root
-
-  function applyStyles(attrs, next) {
-    var first = [],
-      then = []
-    attrs = attrs || {}
-
-    var tag = el,
-      seen = {}
-    while (tag._format) {
-      seen[tag._format] = true
-      if (!attrs[tag._format]) {
-        for (var k in seen) {
-          delete activeInline[k]
-        }
-        el = tag.parent()
+const defaultLineWrapper = ({ type, ordered, checked, depth }) => {
+  switch (type) {
+    case 'listItem': {
+      return {
+        type: 'list',
+        ordered,
+        checked,
+        depth,
       }
-
-      tag = tag.parent()
-    }
-
-    for (var attr in attrs) {
-      if (converters.inline[attr]) {
-        if (activeInline[attr]) {
-          if (activeInline[attr] != attrs[attr]) {
-            // ie when two links abut
-          } else {
-            continue // do nothing -- we should already be inside this style's tag
-          }
-        }
-
-        if (next && attrs[attr] == next[attr]) {
-          first.push(attr) // if the next operation has the same style, this should be the outermost tag
-        } else {
-          then.push(attr)
-        }
-        activeInline[attr] = attrs[attr]
-      }
-    }
-
-    first.forEach(apply)
-    then.forEach(apply)
-
-    function apply(fmt) {
-      var newEl = converters.inline[fmt].call(null, attrs[fmt])
-      if (_.isArray(newEl)) {
-        newEl = new Node(newEl)
-      }
-      newEl._format = fmt
-      el.append(newEl)
-      el = newEl
     }
   }
 }
 
-function isLinifyable(attrs, converters) {
-  for (var k in attrs) {
-    if (k === 'type' && converters.block[attrs.type]) {
-      return true
-    }
-  }
-  return false
+
+const convertFromDeltaToMarkdown = ({
+  convertInline = defaultConvertInline,
+  convertLine = defaultConvertLine,
+  lineWrapper = defaultLineWrapper,
+}) => deltaOps => {
+  const delta = new Delta(deltaOps)
+  let lines = []
+
+  // Format each line
+  delta.eachLine((line, attributes) => {
+    const { type, ordered, checked, depth } = convertLine(attributes)
+    const children = line.ops.map(convertInline)
+    lines = lines.concat(
+      u(type, { ordered, checked, depth }, children)
+    )
+  })
+
+  // Wrap line for lists
+  // const { wrappers, items } = lines.reduce(({ previous, wrappers, items, previousKey }, line) => {
+  //   let wrapper = lineWrapper(line)
+  //   if (!wrapper) {
+  //     return {
+  //       wrappers,
+  //       items: items.concat(line),
+  //       previous: {},
+  //       previousKey,
+  //     }
+  //   } else if (_.isEqual(previous, wrapper)) {
+  //     return {
+  //       wrappers,
+  //       items: items.concat(Object.assign({ parent: previousKey }, line)),
+  //       previous,
+  //       previousKey,
+  //     }
+  //   } else {
+  //     const key = Object.keys(wrappers).length
+  //     return {
+  //       wrappers: Object.assign({ [key]: wrapper }, wrappers),
+  //       items: items.concat(wrapper).concat(Object.assign({ key }, line)),
+  //       previous: wrapper,
+  //       previousKey: key,
+  //     }
+  //   }
+  // }, { wrappers: {}, items: [], previousWrapper: {}, previousKey: null })
+
+  let root = u('root', lines)
+  return remark().stringify(root)
 }
+
+module.exports = convertFromDeltaToMarkdown

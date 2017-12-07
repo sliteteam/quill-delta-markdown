@@ -1,19 +1,33 @@
 const render = require('./fromDelta')
 
-test('renders inline format', function() {
-  expect(
-    render([
-      {
-        insert: 'Hi ',
+test('renders bold format', function() {
+  const md = render({})([
+    {
+      insert: 'Hi ',
+    },
+    {
+      attributes: {
+        bold: true,
       },
-      {
-        attributes: {
-          bold: true,
-        },
-        insert: 'mom',
+      insert: 'mom',
+    },
+  ])
+  expect(md).toEqual('Hi **mom**\n')
+})
+
+test('renders italic format', function () {
+  const md = render({})([
+    {
+      insert: 'Hi ',
+    },
+    {
+      attributes: {
+        italic: true,
       },
-    ])
-  ).toEqual('Hi **mom**\n')
+      insert: 'mom',
+    },
+  ])
+  expect(md).toEqual('Hi _mom_\n')
 })
 
 test('renders embed format', function() {
@@ -75,7 +89,7 @@ test('removes download params for images', function () {
 
 test('renders block format', function() {
   expect(
-    render([
+   render({})([
       {
         insert: 'Headline',
       },
@@ -91,7 +105,7 @@ test('renders block format', function() {
 
 test('renders lists with inline formats correctly', function() {
   expect(
-    render([
+   render({})([
       {
         attributes: {
           italic: true,
@@ -232,7 +246,7 @@ test('renders adjacent inline formats correctly', function() {
 
 test('render an inline link', function() {
   expect(
-    render([
+   render({})([
       {
         insert: 'Go to Google',
         attributes: {
@@ -243,14 +257,14 @@ test('render an inline link', function() {
             },
           },
         },
-      },
+      }
     ])
   ).toEqual('[Go to Google](https://www.google.fr)' + '\n')
 })
 
 test('renders todo block', function() {
   expect(
-    render([
+   render({})([
       {
         insert: 'First todo',
       },
