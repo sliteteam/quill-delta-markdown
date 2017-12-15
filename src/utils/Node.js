@@ -1,50 +1,39 @@
-const _ = require('lodash')
+const _ = require("lodash");
 
-var id = 0
+var id = 0;
 
 class Node {
-  constructor(data) {
-    this.id = ++id
-    if (_.isArray(data)) {
-      this.open = data[0]
-      this.close = data[1]
-    } else if (_.isString(data)) {
-      this.text = data
-    }
-    this.children = []
+  constructor({
+    depth = 0,
+    text = "",
+    type = "",
+    checked = false,
+    children = [],
+    ordered = false
+  }) {
+    this.id = ++id;
+    this.depth = depth;
+    this.text = text;
+    this.type = type;
+    this.checked = checked;
+    this.children = children;
+    this.ordered = ordered;
   }
 
   append(e) {
     if (!(e instanceof Node)) {
-      e = new Node(e)
+      e = new Node(e);
     }
     if (e._parent) {
-      _.pull(e._parent.children, e)
+      _.pull(e._parent.children, e);
     }
-    e._parent = this
-    this.children = this.children.concat(e)
-  }
-
-  render() {
-    var text = ''
-    if (this.open) {
-      text += this.open
-    }
-    if (this.text) {
-      text += this.text
-    }
-    for (var i = 0; i < this.children.length; i++) {
-      text += this.children[i].render()
-    }
-    if (this.close) {
-      text += this.close
-    }
-    return text
+    e._parent = this;
+    this.children = this.children.concat(e);
   }
 
   parent() {
-    return this._parent
+    return this._parent;
   }
 }
 
-module.exports = Node
+module.exports = Node;
