@@ -1,7 +1,7 @@
 ## Installation
 
 ```
-npm install --save @slite/quill-mardown-delta
+npm install --save @sliteteam/quill-delta-markdown
 ```
 
 ## Usage
